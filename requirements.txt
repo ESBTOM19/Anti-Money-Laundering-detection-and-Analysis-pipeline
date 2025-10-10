@@ -1,0 +1,21 @@
+# Core data handling
+pandas
+numpy
+scipy
+# Visualization
+matplotlib
+seaborn
+# Machine learning
+scikit-learn
+xgboost
+imbalanced-learn
+# Time series / feature extraction (optional)
+tsfresh
+# Statistical modeling
+statsmodels
+# Utilities
+tqdm
+joblib
+requests
+# Notebook and visualization support
+jupyter
