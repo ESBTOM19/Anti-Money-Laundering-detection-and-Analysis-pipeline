@@ -1,6 +1,5 @@
 import pandas as pd
 from pathlib import Path
-
 # Create directories if they don't exist
 data_dir = Path("data")
 processed_dir = data_dir / "processed"
