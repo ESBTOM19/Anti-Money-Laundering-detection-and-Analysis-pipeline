@@ -1,12 +1,13 @@
-Anti-Money Laundering Detection And Analysis Pipeline
+ANTI-MONEY LAUNDERING DETECTION AND ANALYSIS PIPELINE
 
 Author
 
-Caxton Henry 
+CAXTON HENRY
+
 Focus: AI Engineering, Financial Crime Analytics, Quantitative Modeling
 Vision: Building transparent, intelligent systems that merge financial insight with data-driven precision with keen interest in financial crime analytics
 
-Overview
+OVERVIEW
 
 This project implements a full end-to-end Financial Crime Detection Pipeline built using real-world principles of anti-money laundering (AML), transaction risk modeling, and supervised machine learning. It leverages the combined power of data preprocessing, feature engineering, model training, evaluation, and visual analytics to replicate the intelligence of an early-stage fraud detection system used by financial institutions and compliance units.
 
@@ -16,7 +17,7 @@ The workflow follows the professional data science pipeline used in financial an
 
 Data Preprocessing → Feature Engineering → Modeling → Evaluation → Visualization
 
-Project Motivation
+PROJECT MOTIVATION
 
 Financial crime remains one of the most critical global challenges for both regulators and institutions. The FATF (Financial Action Task Force) and Basel Committee consistently emphasize the need for AI-driven detection systems that go beyond rule-based filters.
 
@@ -30,7 +31,7 @@ Latency in cross-border transaction monitoring
 
 This project attempts to address those issues by introducing machine learning interpretability and statistical robustness into a detection framework that can adaptively improve with new data.
 
-Financial Organization Context
+FINANCIAL ORGANIZATION CONTEXT
 
 In the financial domain, institutions must comply with AML directives, KYC regulations, and suspicious activity monitoring requirements. Every transaction carries a probabilistic risk of being part of fraud, money laundering, or insider trading.
 
@@ -50,75 +51,15 @@ Each of these features contributes to an understanding of the probability of sus
 
 From a financial modeling standpoint, this approach mimics expected loss modeling:
 
-𝐸
-𝑥
-𝑝
-𝑒
-𝑐
-𝑡
-𝑒
-𝑑
- 
-𝐿
-𝑜
-𝑠
-𝑠
-=
-𝑃
-𝑟
-𝑜
-𝑏
-𝑎
-𝑏
-𝑖
-𝑙
-𝑖
-𝑡
-𝑦
- 
-𝑜
-𝑓
- 
-𝐷
-𝑒
-𝑓
-𝑎
-𝑢
-𝑙
-𝑡
-×
-𝐸
-𝑥
-𝑝
-𝑜
-𝑠
-𝑢
-𝑟
-𝑒
-×
-𝐿
-𝑜
-𝑠
-𝑠
- 
-𝐺
-𝑖
-𝑣
-𝑒
-𝑛
- 
-𝐷
-𝑒
-𝑓
-𝑎
-𝑢
-𝑙
-𝑡
 Expected Loss=Probability of Default×Exposure×Loss Given Default
 
 except here, instead of default, we model probability of suspicion — allowing AML units to quantify investigative risk.
 
-Technical Architecture
+Raw Data
+
+This project is built upon SynthAML: a Synthetic Data Set to Benchmark Anti-Money Laundering Methods, an open-access dataset designed to emulate realistic financial transaction and alert behaviors. The data comprises two primary components — Synthetic Alerts and Synthetic Transactions — which represent simulated suspicious activity reports (SARs) and underlying transactional details, respectively. The dataset was selected for its statistical similarity to real-world AML environments while maintaining full anonymization and privacy compliance, making it ideal for research and machine learning benchmarking. In this project, the raw CSV files were converted to Parquet format to optimize performance and scalability during analysis. The alerts dataset captures outcomes such as Report or Dismiss, while the transactions dataset provides granular details on financial movements linked to each alert, together forming a realistic sandbox for financial crime detection research.
+
+TECHNICAL ARCHITECTURE
 1. Data Preprocessing
 
 Conversion from CSV to Parquet format for optimized read/write speeds and scalability.
@@ -129,7 +70,7 @@ Data normalization and categorical encoding for model-readiness.
 
 The preprocessing module (preprocess.py) ensures that all inputs are clean, consistent, and suitable for large-scale ML training.
 
-2. Feature Engineering
+2. FEATURE ENGINEERING
 
 Creation of transactional ratios, rolling averages, and aggregate behavioral features.
 
@@ -143,7 +84,7 @@ Dismiss (0) → normal
 
 The result is a balanced and interpretable feature matrix that captures both numerical and behavioral signals of potential fraud.
 
-3. Modeling
+3. MODELING
 
 Trained models include:
 
@@ -171,7 +112,7 @@ ROC-AUC Score
 
 This mirrors what banks use internally for model validation under Basel’s model risk management frameworks (SR 11-7).
 
-4. Evaluation and Model Governance
+4. EVALUATION AND MODEL GOVERNANCE
 
 Model evaluation goes beyond raw accuracy.
 The system generates:
@@ -184,7 +125,7 @@ Precision-Recall Tradeoffs to evaluate the impact of threshold tuning
 
 From a compliance perspective, this aligns with the explainability and transparency requirements demanded by regulators. False negatives (missed suspicious activities) are treated as regulatory risks, while false positives are treated as operational inefficiencies.
 
-5. Visualization and Insights
+5. VISUALIZATION AND INSIGHTS
 
 The visualization layer (visualize_results.py) delivers interpretable and investor-ready visual dashboards:
 
@@ -198,7 +139,7 @@ Feature importance charts from tree-based models
 
 These visualizations allow both data scientists and financial analysts to interpret model behavior intuitively — a crucial step in bridging technical results with financial decision-making.
 
-Interpretation of Results
+INTERPRETATION OF RESULTS
 
 The Random Forest and XGBoost models generally outperform linear methods due to their ability to model complex fraud patterns.
 
@@ -214,7 +155,7 @@ Low-risk transactions are processed with minimal human oversight
 
 Thresholds are adjusted based on institutional risk appetite
 
-Technologies Used
+TECHNOLOGIES USED
 Category	Tools / Libraries
 Data Handling	pandas, numpy, pyarrow
 Machine Learning	scikit-learn, xgboost, imbalanced-learn
@@ -256,3 +197,7 @@ Incorporation of NLP for textual alert descriptions.
 Use of SHAP or LIME for advanced interpretability.
 
 Financial calibration against expected monetary loss using weighted misclassification costs.
+
+DATA ETHICS AND PRIVACY
+
+All data used in this project are synthetic and fully anonymized, ensuring zero exposure of real client information. The project complies with GDPR principles, FATF Recommendation 15 (regarding technology and data privacy), and general AI ethics guidelines surrounding fairness and transparency. The methodology encourages responsible model deployment, advocating for human-in-the-loop oversight in all AML-related decision systems. Future extensions will incorporate bias detection and ethical model auditing frameworks to maintain accountability across the entire machine learning lifecycle.
