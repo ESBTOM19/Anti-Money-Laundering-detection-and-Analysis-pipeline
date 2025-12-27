@@ -1,93 +1,177 @@
 # preprocess.py
 """
-This script handles all preprocessing tasks for the Anti-Money-Laundering pipeline:
-- Loads synthetic transactions and alerts data
-- Converts CSV files to Parquet for faster processing
-- Performs feature engineering
-- Merges datasets and prepares features (X) and labels (y)
-- Saves processed data for modeling
+Robust preprocessing for the AML Detection Pipeline.
+
+Responsibilities:
+- Validate raw input files
+- Convert CSV → Parquet with schema enforcement
+- Create optional sample datasets
+- Merge alerts and transactions WITHOUT feature aggregation
+- Persist clean base dataset for downstream feature engineering
+- Produce audit-ready manifest metadata
 """
 
-import pandas as pd
 from pathlib import Path
+import argparse
+import json
+import logging
+import hashlib
+import time
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
-#Define directories and paths
-data_dir = Path("data")                      # Main data directory
-processed_dir = data_dir / "processed"       # Directory to save processed data
-processed_dir.mkdir(parents=True, exist_ok=True)  # Create if not exist
 
-transactions_csv = data_dir / "synthetic_transactions.csv"
-alerts_csv = data_dir / "synthetic_alerts.csv"
+# ----------------------------
+# Logging configuration
+# ----------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-#Function to convert CSV to Parquet
-def convert_csv_to_parquet(csv_path, name, sample_size=100_000):
+
+# ----------------------------
+# Utility functions
+# ----------------------------
+def file_checksum(path: Path) -> str:
+    """Compute SHA256 checksum for auditability."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def validate_file(path: Path):
+    if not path.exists():
+        raise FileNotFoundError(f"Required file not found: {path}")
+    if path.stat().st_size == 0:
+        raise ValueError(f"File is empty: {path}")
+
+
+# ----------------------------
+# CSV → Sample Parquet conversion (fast iteration)
+# ----------------------------
+def csv_to_sample_parquet(
+    csv_path: Path,
+    out_path: Path,
+    sample_size: int,
+):
     """
-    Converts a CSV to Parquet and creates a smaller sample for testing
-    Arguments:
-        csv_path (Path): Path to CSV file
-        name (str): Base name for output files
-        sample_size (int): Number of rows for sample Parquet
+    Stream CSV and save first N rows to Parquet (sample only, for fast iteration).
     """
-    print(f"Processing {csv_path.name} ...")
+    logger.info(f"Creating sample from {csv_path.name} → {out_path.name} (first {sample_size:,} rows)")
+    tmp_path = out_path.with_suffix(".tmp.parquet")
 
-    #Step 1: Create a smaller sample parquet
-    df_sample = pd.read_csv(csv_path, nrows=sample_size)
-    df_sample.to_parquet(processed_dir / f"{name}_sample.parquet",
-                         index=False, compression="snappy")
+    df = pd.read_csv(csv_path, nrows=sample_size)
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    pq.write_table(table, tmp_path, compression="snappy")
+    tmp_path.rename(out_path)
 
-    #Step 2: Convert full CSV to Parquet in chunks
-    print(f"Converting full {csv_path.name} to Parquet (may take time)...")
-    chunksize = 200_000
-    for i, chunk in enumerate(pd.read_csv(csv_path, chunksize=chunksize)):
-        chunk.to_parquet(processed_dir / f"{name}_part{i}.parquet",
-                         index=False, compression="snappy")
+    logger.info(f"Sample saved: {out_path.name} ({len(df):,} rows)")
+    return len(df), table.schema
 
-    print(f"Finished processing {csv_path.name}\n")
 
-#Load and preprocess datasets
-def load_and_merge_data():
-    """
-    Loads the sample Parquet files, merges transactions with alerts,
-    and prepares features (X) and target (y)
-    """
-    # Load samples to avoid memory issues
-    transactions = pd.read_parquet(processed_dir / "synthetic_transactions_sample.parquet")
-    alerts = pd.read_parquet(processed_dir / "synthetic_alerts_sample.parquet")
+# ----------------------------
+# Merge & label creation (NO aggregates, samples only)
+# ----------------------------
+def load_and_merge(transactions_pq: Path, alerts_pq: Path) -> pd.DataFrame:
+    logger.info(f"Loading sample parquets for merge...")
+    tx = pd.read_parquet(transactions_pq)
+    al = pd.read_parquet(alerts_pq)
 
-    print(f"Loaded {transactions.shape[0]} transactions and {alerts.shape[0]} alerts.")
+    logger.info(f"Merging: {tx.shape[0]:,} transactions × {al.shape[0]:,} alerts on AlertID")
+    merged = tx.merge(al, on="AlertID", how="inner")
 
-    # Merge transactions and alerts on AlertID
-    merged = transactions.merge(alerts, on="AlertID", how="inner")
-    print(f"Merged dataset shape: {merged.shape}")
+    if merged.empty:
+        raise ValueError("Merged dataset is empty — check AlertID keys.")
 
-    # Convert Outcome to binary label: 'Report' = 1, 'Dismiss' = 0
-    merged['Label'] = merged['Outcome'].map({'Report': 1, 'Dismiss': 0})
+    logger.info(f"Merged shape: {merged.shape}")
 
-    # Select features and target
-    X = merged[['Size']]  # Add more engineered features
-    y = merged['Label']
+    merged["Label"] = merged["Outcome"].map({"Report": 1, "Dismiss": 0})
 
-    return X, y
+    if merged["Label"].isna().any():
+        raise ValueError("Unmapped Outcome values detected.")
 
-# 4. Save processed features and labels
-def save_processed_data(X, y):
-    """
-    Saves processed features (X) and target (y) as Parquet files
-    """
-    X.to_parquet(processed_dir / "X.parquet", index=False)
-    y.to_parquet(processed_dir / "y.parquet", index=False)
-    print(f"Processed data saved to '{processed_dir}'")
+    logger.info(f"Label mapping complete. Label distribution:\n{merged['Label'].value_counts()}")
+    return merged
 
-# 5.Main execution
+
+# ----------------------------
+# Main
+# ----------------------------
+def main(args):
+    data_dir = Path(args.data_dir)
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    tx_csv = data_dir / "synthetic_transactions.csv"
+    al_csv = data_dir / "synthetic_alerts.csv"
+
+    validate_file(tx_csv)
+    validate_file(al_csv)
+
+    manifest = {
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "source_files": {},
+        "rows": {},
+        "schema": {},
+        "note": "Sample-only preprocessing for fast iteration. Samples use first N rows from CSV.",
+    }
+
+    # Create samples from CSV (no intermediate full parquets)
+    tx_rows, tx_schema = csv_to_sample_parquet(
+        tx_csv,
+        out_dir / "synthetic_transactions_sample.parquet",
+        args.sample_size,
+    )
+    al_rows, al_schema = csv_to_sample_parquet(
+        al_csv,
+        out_dir / "synthetic_alerts_sample.parquet",
+        args.sample_size,
+    )
+
+    manifest["rows"]["transactions_sample"] = tx_rows
+    manifest["rows"]["alerts_sample"] = al_rows
+    manifest["schema"]["transactions_sample"] = str(tx_schema)
+    manifest["schema"]["alerts_sample"] = str(al_schema)
+
+    manifest["source_files"]["transactions"] = {
+        "path": str(tx_csv),
+        "checksum": file_checksum(tx_csv),
+    }
+    manifest["source_files"]["alerts"] = {
+        "path": str(al_csv),
+        "checksum": file_checksum(al_csv),
+    }
+
+    # Merge samples without feature leakage
+    merged = load_and_merge(
+        out_dir / "synthetic_transactions_sample.parquet",
+        out_dir / "synthetic_alerts_sample.parquet",
+    )
+
+    merged.to_parquet(out_dir / "merged_base_sample.parquet", index=False)
+    logger.info(f"Merged base dataset saved ({merged.shape[0]:,} rows)")
+
+    # Save manifest
+    with open(out_dir / "manifest.json", "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    logger.info("Preprocessing complete. Ready for feature engineering.")
+
+
+# ----------------------------
+# CLI
+# ----------------------------
 if __name__ == "__main__":
-    # Convert raw CSVs to Parquet (sample + full chunks)
-    convert_csv_to_parquet(transactions_csv, "synthetic_transactions")
-    convert_csv_to_parquet(alerts_csv, "synthetic_alerts")
+    parser = argparse.ArgumentParser(description="AML Pipeline: CSV → Sample Parquet conversion")
+    parser.add_argument("--data-dir", default="data", help="Directory with synthetic_*.csv files")
+    parser.add_argument("--out-dir", default="data/processed", help="Output directory for parquets & manifest")
+    parser.add_argument("--sample-size", type=int, default=100_000, help="Number of rows to sample from each CSV")
+    args = parser.parse_args()
 
-    # Load merged data and prepare X, y
-    X, y = load_and_merge_data()
-
-    # Save processed features for modeling
-    save_processed_data(X, y)
-
-    print("Preprocessing complete. Ready for modeling.")
+    main(args)
+    logger.info("Preprocessing complete. Ready for feature engineering.")
